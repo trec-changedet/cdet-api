@@ -1,33 +1,60 @@
-import argparse
-import sqlite3
 import json
+import sys
+from models import db, Document
+from tqdm import tqdm
 
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Build a SQLite db for the RAGTIME corpus.")
-    ap.add_argument('db', help="Path to the output SQLite database file.")
-    ap.add_argument('corpus', help="Path to the RAGTIME corpus JSON file.")
+def load_jsonl_to_sqlite(file_path: str):
+    """
+    Loads a JSON lines file into the SQLite database.
+    Each line is expected to be a JSON object with: id, text, url, date.
+    """
+    # Connect to DB and ensure the table exists
+    db.connect()
+    db.create_tables([Document])
 
-    args = ap.parse_args()
+    batch_size = 1000
+    batch = []
 
-    # Connect to the SQLite database (it will be created if it doesn't exist)
-    conn = sqlite3.connect(args.db)
-    c = conn.cursor()
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line_number, line in tqdm(enumerate(f, start=1), desc="Loading documents"):
+            try:
+                data = json.loads(line.strip())
+                
+                # Extract the YYYY-MM-DD portion. 
+                # Assuming 'date' is ISO 8601 formatted or at least starts with the date.
+                raw_date = data.get('date', '')
+                day = raw_date[:10] if len(raw_date) >= 10 else raw_date
 
-    # Create the documents table
-    c.execute('''CREATE TABLE IF NOT EXISTS documents
-                 (id TEXT PRIMARY KEY, text TEXT, url TEXT, date TEXT, day TEXT)''')
-    c.execute('''CREATE INDEX IF NOT EXISTS idx_day ON documents (day)''')
+                batch.append({
+                    'id': data.get('id'),
+                    'text': data.get('text'),
+                    'url': data.get('url'),
+                    'date': raw_date,
+                    'day': day
+                })
 
-    # Load the RAGTIME corpus from the JSON file
-    with open(args.corpus, 'r') as f:
-        docs = [json.loads(line) for line in f]
-        to_load = [(doc['id'], doc['text'], doc['url'], doc['date'], doc['date'].split('T')[0]) for doc in docs]
+                # Perform a bulk insert every 1000 rows for performance
+                if len(batch) >= batch_size:
+                    with db.atomic():
+                        Document.insert_many(batch).execute()
+                    batch = []
+                    
+            except json.JSONDecodeError:
+                print(f"Skipping invalid JSON on line {line_number}")
+            except Exception as e:
+                print(f"Error on line {line_number}: {e}")
 
-    try:
-        c.executemany('INSERT OR REPLACE INTO documents (id, text, url, date, day) VALUES (?, ?, ?, ?, ?)', to_load)
-        conn.commit()
-    except sqlite3.Error as e:
-        print(f"An error occurred: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
+        # Insert any remaining documents
+        if batch:
+            with db.atomic():
+                Document.insert_many(batch).execute()
+            print(f"Finished loading a total of {line_number} documents.")
+
+    db.close()
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print("Usage: python loader.py <path_to_jsonl_file.jsonl>")
+        sys.exit(1)
+    
+    load_jsonl_to_sqlite(sys.argv[1])

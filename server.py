@@ -1,82 +1,43 @@
-import sqlite3
-import argparse
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
+from typing import List
+from models import db, Document
 
-ap = argparse.ArgumentParser(description="Start a Change Detection track API server.")
-ap.add_argument('--db', default='docs.db', help="Path to the SQLite database file")
+app = FastAPI(title="Change Detection API")
 
-args = ap.parse_args()
-
-app = FastAPI()
-conn = sqlite3.connect(args.db)
-c = conn.cursor()
-
-class Document(BaseModel):
+# Pydantic definition mapped for the Peewee model
+class DocumentSchema(BaseModel):
     id: str
     text: str
     url: str
     date: str
+    day: str
 
-class DocumentBatch(BaseModel):
-    documents: list[Document]
+    # This configuration acts as the utility to map Peewee ORM models to Pydantic definitions
+    # It tells Pydantic to read data as attributes (obj.id) rather than just dict lookups (obj["id"])
+    model_config = ConfigDict(from_attributes=True)
 
-@app.get('/')
-async def root():
-    '''
-    Return general information about the API server.
-    '''
-    return {'identity': 'cdet-api/server',
-            'version': '0.1.0'}
+# Dependency to safely manage database connections per request
+def get_db():
+    try:
+        db.connect(reuse_if_open=True)
+        yield
+    finally:
+        if not db.is_closed():
+            db.close()
 
-@app.get('/inbox/{date}')
-async def get_inbox(date: str) -> DocumentBatch:
-    '''
-    Retrieve all the documents for a given date.
+@app.get("/documents/{day}", response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
+def get_documents_by_day(day: str):
+    """
+    Retrieve all documents for a specific day.
+    Expected format for day parameter: YYYY-MM-DD
+    """
+    if len(day) != 10:
+        raise HTTPException(status_code=400, detail="Day must be in exactly YYYY-MM-DD format.")
 
-    **TO DO**: when we can track users, make sure they are stepping through
-    the days in order.
-    **TO DO**: add validation for the date format (should be YYYY-MM-DD).
-    '''
-    c.execute('SELECT id, text, url, date FROM documents WHERE day = ?', (date,))
-    rows = c.fetchall()
-    documents = [Document(id=row[0], text=row[1], url=row[2], date=row[3]) for row in rows]
-    return DocumentBatch(documents=documents)
-
-@app.post('/start-run')
-async def start_run(api_key: str, runtag: str):
-    '''
-    Start a new run for a user. This will create a new entry in the runs table
-    and return the run ID.
-
-    **TO DO**: implement API key authentication and user management.
-    **TO DO**: this starts a session where interactions on this run are stored
-    and then sent to the user when the run is declared complete. If there is a
-    gap of more than 24 hours between interactions, the session should be closed and
-    the run infomation deleted. This is to prevent the database from filling up with 
-    old runs that are never completed.
-    '''
-    # For now, we'll just return a dummy token.
-    return {'runtag': runtag,
-            'token': 'dummy-token'}
-
-# this needs to grow to encompass the results format
-class RunResults(BaseModel):
-    runtag: str
-    token: str
-    results: dict
-
-@app.post('/complete-run')
-async def complete_run(token: str) -> RunResults:
-    '''
-    Complete a run for a user. This will mark the run as complete in the database
-    and return the results of the run.
-
-    **TO DO**: implement API key authentication and user management.
-    **TO DO**: implement logic to retrieve the results of the run from the database.
-    '''
-    # For now, we'll just return a dummy result.
-    # 1. roll up the data for this run
-    # 2. clear out the token
-    # 3. return the results
-    return RunResults(runtag='dummy-runtag', token=token, results={'dummy': 'result'})
+    # Query the SQLite database using Peewee
+    query = Document.select().where(Document.day == day)
+    
+    # Evaluating the query via list() returns the Peewee instances, 
+    # which FastAPI safely converts to JSON using the Pydantic DocumentSchema
+    return list(query)
