@@ -27,7 +27,9 @@ def get_db():
             db.close()
 
 @app.get("/documents/{day}", response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
-def get_documents_by_day(day: str):
+def get_documents_by_day(
+    day: Annotated[str, Path(pattern=r"^\d{4}-\d{2}-\d{2}$", 
+                             description="The day to filter documents by, in YYYY-MM-DD format")]):
     """
     Retrieve all documents for a specific day.
     Expected format for day parameter: YYYY-MM-DD
