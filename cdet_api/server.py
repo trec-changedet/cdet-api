@@ -128,6 +128,32 @@ async def start_run(api_key: str, metadata: dict | None = None):
     RunState.insert(token=token, metadata={'state': 'started', 'api_key': api_key, 'timestamp': time.time()}).execute()
     return {'token': token}
 
+@app.get('/next_day', response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
+def get_next_day(token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
+    '''
+    Retrieve documents for the next day in the sequence.
+    This endpoint is an alternative to /documents/{day} that automatically determines the next day based on the last accessed day for this token.
+    '''
+    if not valid_token(token):
+        raise HTTPException(status_code=401, detail='Invalid token')
+    
+    last_accessed_day = RunState.select(RunState.metadata['last_accessed_day']).where(RunState.token == token).scalar()
+    if last_accessed_day is None:
+        # If no day has been accessed yet, start with the first day in the database
+        next_day = Day.select(Day.day).where(Day.seq_day == 0).scalar()
+    else:
+        last_seq_day = Day.select(Day.seq_day).where(Day.day == last_accessed_day).scalar()
+        next_day = Day.select(Day.day).where(Day.seq_day == last_seq_day + 1).scalar()
+
+    if next_day is None:
+        raise HTTPException(status_code=404, detail='No more days available')
+
+    log(f'{token}.log', {'endpoint': '/next_day', 'day': next_day})
+    update_run_state(token, last_accessed_day=next_day)
+
+    query = Document.select().where(Document.day == next_day)
+    return list(query)
+
 @app.get('/documents/{day}', response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
 def get_documents_by_day(
     day: Annotated[str, Path(pattern=r'^\d{4}-\d{2}-\d{2}$', 
