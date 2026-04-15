@@ -9,7 +9,7 @@ from typing import List, Annotated
 from types import SimpleNamespace
 import tomllib
 import pathlib
-from cdet_api.models import DocDay, db, Document
+from cdet_api.models import Day, DocDay, db, Document, RunState
 
 app = FastAPI(title='Change Detection API')
 
@@ -17,6 +17,11 @@ app = FastAPI(title='Change Detection API')
 settings_path = 'settings.toml'
 with open(settings_path, 'rb') as f:
     settings = SimpleNamespace(**tomllib.load(f))
+
+# Ensure tables exist in the database
+db.connect()
+db.create_tables([Document, DocDay, RunState], safe=True)
+db.close()
 
 # The data storage mechanism for API use on the server is
 # an append-only log file of JSON lines for each token.
@@ -116,6 +121,7 @@ async def start_run(api_key: str, metadata: dict | None = None):
     token = secrets.token_hex(23)
     # To do: store api_key, token pair
     log(f'{token}.log', {'endpoint': '/start_run', 'api_key': api_key, 'metadata': metadata})
+    RunState.insert(token=token, metadata={'state': 'started', 'api_key': api_key}).execute()
     return {'token': token}
 
 @app.get('/documents/{day}', response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
@@ -133,8 +139,14 @@ def get_documents_by_day(
         raise HTTPException(status_code=401, detail='Invalid token')
     
     # Validate day: under this token, this day needs to follow the previous day or be the first day
+    last_accessed_day = RunState.select(RunState.metadata['last_accessed_day']).where(RunState.token == token).scalar()
+    last_seq_day = Day.select(Day.seq_day).where(Day.day == last_accessed_day).scalar() if last_accessed_day else -1
+    this_seq_day = Day.select(Day.seq_day).where(Day.day == day).scalar()
+    if this_seq_day != last_seq_day + 1:
+        raise HTTPException(status_code=400, detail=f"Invalid day {day}. The last accessed day for this run is {last_accessed_day}, so the next day must be {Day.select(Day.day).where(Day.seq_day == last_seq_day + 1).scalar()}.")
 
     log(f'{token}.log', {'endpoint': '/documents', 'day': day})
+    RunState.update(metadata={'last_accessed_day': day}).where(RunState.token == token).execute()
 
     # Query the SQLite database using Peewee
     query = Document.select().where(Document.day == day)

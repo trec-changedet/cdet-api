@@ -1,6 +1,6 @@
 import json
 import sys
-from cdet_api.models import DocDay, db, Document
+from cdet_api.models import Day, DocDay, db, Document
 from tqdm import tqdm
 
 def load_jsonl_to_sqlite(file_path: str):
@@ -10,11 +10,12 @@ def load_jsonl_to_sqlite(file_path: str):
     """
     # Connect to DB and ensure the table exists
     db.connect()
-    db.create_tables([Document, DocDay])
+    db.create_tables([Document, DocDay, Day], safe=True)
 
     batch_size = 1000
     doc_batch = []
     doc_day_batch = []
+    days = {}
 
     with open(file_path, 'r', encoding='utf-8') as f:
         for line_number, line in tqdm(enumerate(f, start=1), desc="Loading documents"):
@@ -25,6 +26,7 @@ def load_jsonl_to_sqlite(file_path: str):
                 # Assuming 'date' is ISO 8601 formatted or at least starts with the date.
                 raw_date = data.get('date', '')
                 day = raw_date[:10] if len(raw_date) >= 10 else raw_date
+                days[day] = 0
 
                 doc_batch.append({
                     'id': data.get('id'),
@@ -58,6 +60,8 @@ def load_jsonl_to_sqlite(file_path: str):
                 Document.insert_many(doc_batch).execute()
                 DocDay.insert_many(doc_day_batch).execute()
             print(f"Finished loading a total of {line_number} documents.")
+
+    Day.insert_many([{'day': d, 'seq_day': i} for i, d in enumerate(days.keys())]).execute()
 
     db.close()
 
