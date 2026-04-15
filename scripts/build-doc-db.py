@@ -1,6 +1,6 @@
 import json
 import sys
-from models import db, Document
+from cdet_api.models import DocDay, db, Document
 from tqdm import tqdm
 
 def load_jsonl_to_sqlite(file_path: str):
@@ -10,10 +10,11 @@ def load_jsonl_to_sqlite(file_path: str):
     """
     # Connect to DB and ensure the table exists
     db.connect()
-    db.create_tables([Document])
+    db.create_tables([Document, DocDay])
 
     batch_size = 1000
-    batch = []
+    doc_batch = []
+    doc_day_batch = []
 
     with open(file_path, 'r', encoding='utf-8') as f:
         for line_number, line in tqdm(enumerate(f, start=1), desc="Loading documents"):
@@ -25,7 +26,7 @@ def load_jsonl_to_sqlite(file_path: str):
                 raw_date = data.get('date', '')
                 day = raw_date[:10] if len(raw_date) >= 10 else raw_date
 
-                batch.append({
+                doc_batch.append({
                     'id': data.get('id'),
                     'text': data.get('text'),
                     'url': data.get('url'),
@@ -33,11 +34,18 @@ def load_jsonl_to_sqlite(file_path: str):
                     'day': day
                 })
 
+                doc_day_batch.append({
+                    'docid': data.get('id'),
+                    'day': day
+                })
+
                 # Perform a bulk insert every 1000 rows for performance
-                if len(batch) >= batch_size:
+                if len(doc_batch) >= batch_size:
                     with db.atomic():
-                        Document.insert_many(batch).execute()
-                    batch = []
+                        Document.insert_many(doc_batch).execute()
+                        DocDay.insert_many(doc_day_batch).execute()
+                    doc_batch = []
+                    doc_day_batch = []
                     
             except json.JSONDecodeError:
                 print(f"Skipping invalid JSON on line {line_number}")
@@ -45,9 +53,10 @@ def load_jsonl_to_sqlite(file_path: str):
                 print(f"Error on line {line_number}: {e}")
 
         # Insert any remaining documents
-        if batch:
+        if doc_batch:
             with db.atomic():
-                Document.insert_many(batch).execute()
+                Document.insert_many(doc_batch).execute()
+                DocDay.insert_many(doc_day_batch).execute()
             print(f"Finished loading a total of {line_number} documents.")
 
     db.close()

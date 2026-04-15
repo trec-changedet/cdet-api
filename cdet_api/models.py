@@ -15,3 +15,11 @@ class Document(peewee.Model):
     class Meta:
         database = db
         table_name = 'documents'
+
+class DocDay(peewee.Model):
+    docid = peewee.CharField(primary_key=True, index=True)
+    day = peewee.CharField()
+
+    class Meta:
+        database = db
+        table_name = 'doc_days'
