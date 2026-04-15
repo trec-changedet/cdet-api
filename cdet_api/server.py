@@ -46,6 +46,14 @@ def valid_token(token: str) -> bool:
 def update_run_state(token: str, **kwargs):
     RunState.update(metadata={**kwargs, 'timestamp': time.time()}).where(RunState.token == token).execute()
 
+def clean_run_states(since=2 * 24 * 60 * 60):
+    # Remove run states that have not been updated in the last 2 days
+    cutoff_time = time.time() - since
+    old_runs = RunState.select().where(RunState.metadata['timestamp'] < cutoff_time)
+    for run in old_runs:
+        (pathlib.Path(settings.logdir) / f'{run.token}.log').unlink(missing_ok=True)
+        run.delete_instance()
+
 # Pydantic definition for RAGTIME1 documents.
 class DocumentSchema(BaseModel):
     id: str
@@ -118,8 +126,9 @@ def get_db():
         if not db.is_closed():
             db.close()
 
-@app.post('/start_run/{api_key}')
+@app.post('/start_run/{api_key}', dependencies=[Depends(get_db)])
 async def start_run(api_key: str, metadata: dict | None = None):
+    clean_run_states()  # Clean up old run states on each new run start
     if not valid_api_key(api_key):
         raise HTTPException(status_code=401, detail='Invalid API key')
     token = secrets.token_hex(23)
@@ -129,7 +138,7 @@ async def start_run(api_key: str, metadata: dict | None = None):
     return {'token': token}
 
 @app.get('/next_day', response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
-def get_next_day(token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
+async def get_next_day(token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
     '''
     Retrieve documents for the next day in the sequence.
     This endpoint is an alternative to /documents/{day} that automatically determines the next day based on the last accessed day for this token.
@@ -155,7 +164,7 @@ def get_next_day(token: Annotated[str, Query(description='Authentication token o
     return list(query)
 
 @app.get('/documents/{day}', response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
-def get_documents_by_day(
+async def get_documents_by_day(
     day: Annotated[str, Path(pattern=r'^\d{4}-\d{2}-\d{2}$', 
                              description='The day to filter documents by, in YYYY-MM-DD format')],
     token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
