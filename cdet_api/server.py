@@ -1,5 +1,6 @@
 import json
 import secrets
+import time
 
 from annotated_types import doc
 from certifi import where
@@ -41,6 +42,9 @@ def valid_api_key(api_key: str) -> bool:
 
 def valid_token(token: str) -> bool:
     return (pathlib.Path(settings.logdir) / f'{token}.log').exists()
+
+def update_run_state(token: str, **kwargs):
+    RunState.update(metadata={**kwargs, 'timestamp': time.time()}).where(RunState.token == token).execute()
 
 # Pydantic definition for RAGTIME1 documents.
 class DocumentSchema(BaseModel):
@@ -121,7 +125,7 @@ async def start_run(api_key: str, metadata: dict | None = None):
     token = secrets.token_hex(23)
     # To do: store api_key, token pair
     log(f'{token}.log', {'endpoint': '/start_run', 'api_key': api_key, 'metadata': metadata})
-    RunState.insert(token=token, metadata={'state': 'started', 'api_key': api_key}).execute()
+    RunState.insert(token=token, metadata={'state': 'started', 'api_key': api_key, 'timestamp': time.time()}).execute()
     return {'token': token}
 
 @app.get('/documents/{day}', response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
@@ -146,7 +150,7 @@ def get_documents_by_day(
         raise HTTPException(status_code=400, detail=f"Invalid day {day}. The last accessed day for this run is {last_accessed_day}, so the next day must be {Day.select(Day.day).where(Day.seq_day == last_seq_day + 1).scalar()}.")
 
     log(f'{token}.log', {'endpoint': '/documents', 'day': day})
-    RunState.update(metadata={'last_accessed_day': day}).where(RunState.token == token).execute()
+    update_run_state(token, last_accessed_day=day)
 
     # Query the SQLite database using Peewee
     query = Document.select().where(Document.day == day)
