@@ -1,3 +1,4 @@
+import io
 import json
 import secrets
 import time
@@ -5,7 +6,8 @@ import time
 from annotated_types import doc
 from certifi import where
 from fastapi import FastAPI, Depends, HTTPException, Path, Query
-from pydantic import BaseModel, ConfigDict
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, StringConstraints
 from typing import List, Annotated
 from types import SimpleNamespace
 import tomllib
@@ -154,10 +156,21 @@ async def retrieval(token: str,
             raise HTTPException(status_code=400, detail=f"Question {qr.qid} has {len(qr.doc_ranking)} retrieval results, exceeding the maximum of 100.")
         
         docs = (DocDay.select()
-                .where(DocDay.docid.in_([hit.doc_id for hit in qr.doc_ranking]) & (DocDay.day != run.last_date_accessed))
+                .where(DocDay.docid.in_([hit.doc_id for hit in qr.doc_ranking]) & (DocDay.day != today))
                 .exists())
         if docs:
-            raise HTTPException(status_code=400, detail=f"Document {doc.docid} is from day {doc.day}, but the last accessed day for this run is {run.last_date_accessed}. Please ensure retrieval results are reported for the correct day.")
+            raise HTTPException(status_code=400, detail=f"Document {doc.docid} is from day {doc.day}, but the last accessed day for this run is {today}. Please ensure retrieval results are reported for the correct day.")
 
     log(f'{token}.log', {'endpoint': '/retrieval', 'topic': topic, 'results': [ foo.model_dump() for foo in results ], 'metadata': metadata})
     return {'status': 'success'}
+
+@app.get('/finalize_run', dependencies=[Depends(get_db)])
+async def finalize_run(token: str):
+    if not valid_token(token):
+        raise HTTPException(status_code=401, detail='Invalid token')
+    
+    log(f'{token}.log', {'endpoint': '/finalize_run'})
+    update_run_state(token, state='finalized')
+    with open(pathlib.Path(settings.logdir) / f'{token}.log', 'r') as f:
+        for line in f:
+            le = json.loads(line)
