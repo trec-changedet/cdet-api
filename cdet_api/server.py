@@ -82,40 +82,6 @@ class TopicResults(BaseModel):
     topic: str
     results: dict[str, List[QuestionResults]]
     extra: dict | None = None
-
-class Run:
-    def __init__(self, logfile: Path | None = None):
-        self.metadata: dict[str, str] = {}
-        self.topic_results: dict[str, TopicResults] = {}
-
-        self.last_date_accessed: None | str = None
-        self.logfile = logfile
-        self._play_logfile()
-
-    def _play_logfile(self):
-        if not self.logfile.exists():
-            return
-        with open(self.logfile, 'r') as f:
-            for line in f:
-                message = json.loads(line)
-                endpoint = message.get('endpoint')
-                if endpoint == '/start_run':
-                    self.metadata = message.get('metadata', {})
-                elif endpoint == '/documents':
-                     self.last_date_accessed = message.get('day')
-                elif endpoint == '/retrieval':
-                    topic = message.get('topic')
-                    results = message.get('results')
-                    metadata = message.get('metadata')
-                    if topic and results:
-                        self.topic_results[topic] = TopicResults(**results, extra=metadata)
-
-    def save(self, output_path: Path):
-        with open(output_path, 'w') as f:
-            json.dump(self.metadata, f, indent=2)
-            for topic in self.topic_results:
-                json.dump(self.topic_results[topic].model_dump(), f, indent=2)
-
         
 # Dependency to safely manage database connections per request
 def get_db():
