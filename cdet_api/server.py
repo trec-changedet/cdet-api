@@ -131,37 +131,6 @@ async def get_next_day(token: Annotated[str, Query(description='Authentication t
     query = Document.select().where(Document.day == next_day)
     return list(query)
 
-@app.get('/documents/{day}', response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
-async def get_documents_by_day(
-    day: Annotated[str, Path(pattern=r'^\d{4}-\d{2}-\d{2}$', 
-                             description='The day to filter documents by, in YYYY-MM-DD format')],
-    token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
-    '''
-    Retrieve all documents for a specific day.
-    Expected format for day parameter: YYYY-MM-DD
-    '''
-    if len(day) != 10:
-        raise HTTPException(status_code=400, detail='Day must be in exactly YYYY-MM-DD format.')
-    if not valid_token(token):
-        raise HTTPException(status_code=401, detail='Invalid token')
-    
-    # Validate day: under this token, this day needs to follow the previous day or be the first day
-    last_accessed_day = RunState.select(RunState.metadata['last_accessed_day']).where(RunState.token == token).scalar()
-    last_seq_day = Day.select(Day.seq_day).where(Day.day == last_accessed_day).scalar() if last_accessed_day else -1
-    this_seq_day = Day.select(Day.seq_day).where(Day.day == day).scalar()
-    if this_seq_day != last_seq_day + 1:
-        raise HTTPException(status_code=400, detail=f"Invalid day {day}. The last accessed day for this run is {last_accessed_day}, so the next day must be {Day.select(Day.day).where(Day.seq_day == last_seq_day + 1).scalar()}.")
-
-    log(f'{token}.log', {'endpoint': '/documents', 'day': day})
-    update_run_state(token, last_accessed_day=day)
-
-    # Query the SQLite database using Peewee
-    query = Document.select().where(Document.day == day)
-    
-    # Evaluating the query via list() returns the Peewee instances, 
-    # which FastAPI safely converts to JSON using the Pydantic DocumentSchema
-    return list(query)
-
 @app.post('/retrieval', dependencies=[Depends(get_db)])
 async def retrieval(token: str, 
                     topic: str, 
