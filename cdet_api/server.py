@@ -55,12 +55,14 @@ def clean_run_states(since=2 * 24 * 60 * 60):
         run.delete_instance()
 
 # Pydantic definition for RAGTIME1 documents.
+
+type DayString = Annotated[str, StringConstraints(pattern=r'^\d{4}-\d{2}-\d{2}$', min_length=10, max_length=10)]
 class DocumentSchema(BaseModel):
     id: str
     text: str
     url: str
     date: str
-    day: str
+    day: DayString
 
     # This configuration acts as the utility to map Peewee ORM models to Pydantic definitions
     # It tells Pydantic to read data as attributes (obj.id) rather than just dict lookups (obj['id'])
@@ -80,7 +82,7 @@ class QuestionResults(BaseModel):
 
 class TopicResults(BaseModel):
     topic: str
-    results: dict[str, List[QuestionResults]]
+    results: dict[DayString, List[QuestionResults]]
     extra: dict | None = None
         
 # Dependency to safely manage database connections per request
@@ -172,7 +174,11 @@ async def retrieval(token: str,
         raise HTTPException(status_code=401, detail='Invalid token')
     # Ensure that we are in some day (must have been preceeded by a /documents/{day} call) and that the topic is not empty
     
-    run = Run(pathlib.Path(settings.logdir) / f'{token}.log')
+    today = RunState.select(RunState.metadata['last_accessed_day']).where(RunState.token == token).scalar()
+    if today is None:
+        raise HTTPException(status_code=400, detail='No day has been accessed yet for this token. Please call /next_day before reporting retrieval results.')
+    if not topic:
+        raise HTTPException(status_code=400, detail='Topic cannot be empty.')
 
     for qr in results:
         if len(qr.doc_ranking) > 100:
