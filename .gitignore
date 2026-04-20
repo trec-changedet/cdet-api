@@ -5,4 +5,5 @@ __pycache__/
 *.pyd
 *.db
 logs/
-settings.toml
+settings.tomlsdks/
+topics.two-keepers
