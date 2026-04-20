@@ -7,6 +7,7 @@ from annotated_types import doc
 from certifi import where
 from fastapi import FastAPI, Depends, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints
 from typing import List, Annotated, Tuple
 from types import SimpleNamespace
@@ -176,6 +177,7 @@ async def finalize_run(token: str):
         raise HTTPException(status_code=401, detail='Invalid token')
     
     results_per_topic = {}
+    metadata_block = None
     errors = []
     with open(pathlib.Path(settings.logdir) / f'{token}.log', 'r') as f:
         current_day = None
@@ -183,9 +185,9 @@ async def finalize_run(token: str):
             le = json.loads(line)
 
             if le['endpoint'] == '/start_run':
-                yield {
+                metadata_block = {
                     'runtag': le.get('runtag', 'my_run'),
-                    **le['metadata']
+                    **(le.get('metadata', None))
                 }
 
             elif le['endpoint'] == '/next_day':
@@ -196,18 +198,33 @@ async def finalize_run(token: str):
                 if topic not in results_per_topic:
                     results_per_topic[topic] = {
                         'topic': topic,
-                        'extra': le['metadata'],
+                        'extra': le.get('metadata', None),
                         'results': {}
                     }
                 results_per_topic[topic]['results'][current_day] = le['results']
 
+    output = [metadata_block]
     for topic in results_per_topic:
-        yield results_per_topic[topic]
+        output.append(results_per_topic[topic])
 
     if len(errors) > 0:
-        yield { 'errors': errors }
+        output.append({ 'errors': errors })
 
     log(f'{token}.log', {'endpoint': '/finalize_run'})
     update_run_state(token, state='finalized')
     RunState.delete().where(RunState.token == token).execute()
+    return output
 
+def use_route_names_as_operation_ids(app: FastAPI) -> None:
+    """
+    Simplify operation IDs so that generated API clients have simpler function
+    names.
+
+    Should be called only after all routes have been added.
+    """
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            route.operation_id = route.name  # in this case, 'read_items'
+
+
+use_route_names_as_operation_ids(app)
