@@ -8,8 +8,9 @@ from certifi import where
 from fastapi import Body, FastAPI, Depends, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, model_validator
-from typing import Dict, List, Annotated, Tuple
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, TypeAdapter, model_validator
+from typing import Dict, List, Annotated, Tuple, Union
+from collections.abc import AsyncIterable
 from types import SimpleNamespace
 import tomllib
 import pathlib
@@ -112,7 +113,9 @@ class RunMetadata(BaseModel):
         examples=[['gemini-3.1-pro-preview', 'meta/llama-4-maverick-17b-128e-instruct-maas', 'claude-sonnet-4-6']]
     )
 
-Run = RootModel[Tuple[RunMetadata, List[TopicResults]]]
+Run = list[Union[RunMetadata, TopicResults, dict[str,str]]]
+Run_adapter = TypeAdapter(Run)
+
 
 # Dependency to safely manage database connections per request
 def get_db():
@@ -190,13 +193,28 @@ async def retrieval(token: Annotated[str, Query(description='Authentication toke
     log(f'{token}.log', {'endpoint': '/retrieval', 'topic': topic, 'results': [ foo.model_dump() for foo in results.results ], 'retrieval_extra': results.extra})
     return {'status': 'success'}
 
-@app.get('/finalize_run', response_model=Run, dependencies=[Depends(get_db)])
-async def finalize_run(token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
+@app.get('/finalize_run', 
+         response_class=StreamingResponse, 
+         dependencies=[Depends(get_db)],
+         responses={
+             '200': {
+                 'description': 'a run',
+                 'content': {
+                     'text/plain': {
+                         'schema': {}
+                     }
+                 }
+             }
+         })
+async def finalize_run(
+    token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]
+    ) -> AsyncIterable[str]:
+
     if not valid_token(token):
         raise HTTPException(status_code=401, detail='Invalid token')
     
     results_per_topic = {}
-    metadata_block = None
+    runinfo = None
     errors = []
     with open(pathlib.Path(settings.logdir) / f'{token}.log', 'r') as f:
         current_day = None
@@ -204,10 +222,8 @@ async def finalize_run(token: Annotated[str, Query(description='Authentication t
             le = json.loads(line)
 
             if le['endpoint'] == '/start_run':
-                metadata_block = {
-                    'runtag': le.get('runtag', 'my_run'),
-                    **(le.get('metadata', None))
-                }
+                runinfo = RunMetadata(**(json.loads(le['metadata'])))
+                yield runinfo.model_dump_json() + '\n'
 
             elif le['endpoint'] == '/next_day':
                 current_day = le['day']
@@ -222,17 +238,15 @@ async def finalize_run(token: Annotated[str, Query(description='Authentication t
                     }
                 results_per_topic[topic]['results'][current_day] = le['results']
 
-    output = [metadata_block]
     for topic in results_per_topic:
-        output.append(results_per_topic[topic])
+        yield json.dumps(results_per_topic[topic]) + '\n'
 
     if len(errors) > 0:
-        output.append({ 'errors': errors })
+        yield json.dumps({ 'errors': errors }) + '\n'
 
     log(f'{token}.log', {'endpoint': '/finalize_run'})
     update_run_state(token, state='finalized')
     RunState.delete().where(RunState.token == token).execute()
-    return output
 
 def use_route_names_as_operation_ids(app: FastAPI) -> None:
     """
