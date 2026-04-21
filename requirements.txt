@@ -1,4 +1,6 @@
 fastapi[standard]==0.135.2
 tqdm==4.67.3
 peewee==4.0.4
-python-terrier==1.0
+python-terrier==1.0uvicorn==0.44.0
+pyterrier==1.0.4
+uvicorn==0.44.0
