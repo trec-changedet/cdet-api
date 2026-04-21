@@ -44,6 +44,9 @@ def search(index, topic):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser('A simple CDet track API client')
+    ap.add_argument('-d', '--stop_after_n_days',
+                    help='Stop the run after N days',
+                    type=int)
     ap.add_argument('topics',
                     help='Path to the topics file')
     args = ap.parse_args()
@@ -55,9 +58,14 @@ if __name__ == '__main__':
         api_instance = changedet_api.DefaultApi(api_client)
         api_response = api_instance.start_run(api_key='abc123', run_metadata=run_def)
         token = api_response['token']
+        shutil.rmtree('foo.index', ignore_errors=True)
 
         try:
+            days = 0
             while True:
+                days += 1
+                if args.stop_after_n_days and days > args.stop_after_n_days:
+                    break
                 day_docs = [ { 'docno': doc.id, 'text': doc.text } for doc in api_instance.get_next_day(token) ]
                 index = build_index(day_docs)
                 for topic in topics:
@@ -68,6 +76,7 @@ if __name__ == '__main__':
         except ApiException:
             print("all done!")
 
+    shutil.rmtree('foo.index', ignore_errors=True)
     runfile = api_instance.finalize_run(token)
     with open(f"{run_def['runtag']}.json", 'r') as fp:
         fp.write(runfile)
