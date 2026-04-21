@@ -3,7 +3,7 @@ import json
 import shutil
 import changedet_api
 from changedet_api.api_client import ApiException
-from changedet_api.models import Hit, QuestionResults
+from changedet_api.models import RunMetadata, Hit, QuestionResults, DayResults
 from pprint import pprint
 import pyterrier as pt
 import pandas as pd
@@ -12,10 +12,10 @@ config = changedet_api.Configuration(
     host='http://127.0.0.1:8000'
 )
 
-run_def = {
-    'runtag': 'my-run',
-    'description': 'Uses PyTerrier to index the documents on each day, search the docs using a BM25 search with the question, return the top 20 docs.'
-}
+run_def = RunMetadata(
+    runtag='my-run', 
+    description='Uses PyTerrier to index the documents on each day, search the docs using a BM25 search with the question, return the top 20 docs.',
+    models=[])
 
 def build_index(docs):
     index = pt.terrier.TerrierIndex('foo.index', memory=True)
@@ -36,7 +36,7 @@ def convert_results(df):
     return result
 
 def search(index, topic):
-    retriever = index.bm25() % 20
+    retriever = index.bm25() % 20 # this doesn't seem to be working to limit the results list
     df = pd.DataFrame([[q['qid'], q['question']] for q in topic['questions']], columns=['qid', 'query'])
     results = retriever(df)
     converted = convert_results(results)
@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
     with changedet_api.ApiClient(config) as api_client:
         api_instance = changedet_api.DefaultApi(api_client)
-        api_response = api_instance.start_run(api_key='abc123', runtag=run_def['runtag'], request_body=run_def)
+        api_response = api_instance.start_run(api_key='abc123', run_metadata=run_def)
         token = api_response['token']
 
         try:
@@ -62,7 +62,7 @@ if __name__ == '__main__':
                 index = build_index(day_docs)
                 for topic in topics:
                     results = search(index, topic)
-                    result = api_instance.retrieval(token=token, topic=topic['tid'], body_retrieval_retrieval_post={'results': results})
+                    result = api_instance.retrieval(token=token, topic=topic['tid'], day_results=DayResults(results=results))
                 shutil.rmtree('foo.index')
 
         except ApiException:

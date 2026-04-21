@@ -5,7 +5,7 @@ import time
 
 from annotated_types import doc
 from certifi import where
-from fastapi import FastAPI, Depends, HTTPException, Path, Query
+from fastapi import Body, FastAPI, Depends, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, model_validator
@@ -83,9 +83,13 @@ class QuestionResults(BaseModel):
     doc_ranking: List[Hit]
     extra: dict | None = None
 
+class DayResults(BaseModel):
+    results: list[QuestionResults]
+    extra: dict | None = None
+
 class TopicResults(BaseModel):
     topic: str
-    results: dict[DayString, List[QuestionResults]]
+    results: dict[DayString, DayResults]
     extra: dict | None = None
 
 class RunMetadata(BaseModel):
@@ -159,8 +163,7 @@ async def get_next_day(token: Annotated[str, Query(description='Authentication t
 @app.post('/retrieval', dependencies=[Depends(get_db)])
 async def retrieval(token: Annotated[str, Query(description='Authentication token obtained from /start_run')], 
                     topic: str, 
-                    results: List[QuestionResults], 
-                    metadata: dict | None = None):
+                    results: DayResults):
     '''
     Report retrieval results for the current day.
     '''
@@ -174,7 +177,7 @@ async def retrieval(token: Annotated[str, Query(description='Authentication toke
     if not topic:
         raise HTTPException(status_code=400, detail='Topic cannot be empty.')
 
-    for qr in results:
+    for qr in results.results:
         if len(qr.doc_ranking) > 100:
             raise HTTPException(status_code=400, detail=f"Question {qr.qid} has {len(qr.doc_ranking)} retrieval results, exceeding the maximum of 100.")
         
@@ -184,7 +187,7 @@ async def retrieval(token: Annotated[str, Query(description='Authentication toke
         if docs:
             raise HTTPException(status_code=400, detail=f"Document {doc.docid} is from day {doc.day}, but the last accessed day for this run is {today}. Please ensure retrieval results are reported for the correct day.")
 
-    log(f'{token}.log', {'endpoint': '/retrieval', 'topic': topic, 'results': [ foo.model_dump() for foo in results ], 'retrieval_extra': metadata})
+    log(f'{token}.log', {'endpoint': '/retrieval', 'topic': topic, 'results': [ foo.model_dump() for foo in results.results ], 'retrieval_extra': results.extra})
     return {'status': 'success'}
 
 @app.get('/finalize_run', response_model=Run, dependencies=[Depends(get_db)])
