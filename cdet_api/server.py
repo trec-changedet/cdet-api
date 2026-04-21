@@ -8,8 +8,8 @@ from certifi import where
 from fastapi import FastAPI, Depends, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints
-from typing import List, Annotated, Tuple
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, model_validator
+from typing import Dict, List, Annotated, Tuple
 from types import SimpleNamespace
 import tomllib
 import pathlib
@@ -89,8 +89,24 @@ class TopicResults(BaseModel):
     extra: dict | None = None
 
 class RunMetadata(BaseModel):
-    runtag: Annotated[str, Field(max_length=20)]
-    model_config = ConfigDict(extra='allow')
+    runtag: str = Field(
+        title='Runtag',
+        description="Run identifier. Must be 20 characters or less, contain only numbers, letters, periods, hyphens, and underscores, and not begin with a period.",
+        max_length=20,
+        min_length=1,
+        pattern=r'^[a-zA-Z0-9_-][a-zA-Z0-9_.-]{1,20}$',
+        examples=['my_run', 'NISTrun1']
+    )
+    description: str = Field(
+        title='Description',
+        description='Provide a description of your run that briefly explains your approach to the task.',
+        examples=['Provide a description of your run that briefly explains your approach to the task.']
+    )
+    models: list[str] = Field(
+        title='Models',
+        description='Give names or URLs of LLMs used in this run. The names should be enough to allow others to reproduce your run.',
+        examples=[['gemini-3.1-pro-preview', 'meta/llama-4-maverick-17b-128e-instruct-maas', 'claude-sonnet-4-6']]
+    )
 
 Run = RootModel[Tuple[RunMetadata, List[TopicResults]]]
 
@@ -104,18 +120,18 @@ def get_db():
             db.close()
 
 @app.post('/start_run/{api_key}', dependencies=[Depends(get_db)])
-async def start_run(api_key: str, runtag: str, metadata: dict | None = None):
+async def start_run(api_key: str, metadata: RunMetadata):
     clean_run_states()  # Clean up old run states on each new run start
     if not valid_api_key(api_key):
         raise HTTPException(status_code=401, detail='Invalid API key')
     token = secrets.token_hex(23)
     # To do: store api_key, token pair
-    log(f'{token}.log', {'endpoint': '/start_run', 'api_key': api_key, 'runtag': runtag, 'metadata': metadata})
+    log(f'{token}.log', {'endpoint': '/start_run', 'api_key': api_key, 'runtag': metadata.runtag, 'metadata': metadata.model_dump_json()})
     RunState.insert(token=token, metadata={'state': 'started', 'api_key': api_key, 'timestamp': time.time()}).execute()
     return {'token': token}
 
 @app.get('/next_day', response_model=List[DocumentSchema], dependencies=[Depends(get_db)])
-async def get_next_day(token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
+async def get_next_day(token: Annotated[str, Query(description='Authentication token obtained from /start_run')]):
     '''
     Retrieve documents for the next day in the sequence.
     This endpoint is an alternative to /documents/{day} that automatically determines the next day based on the last accessed day for this token.
@@ -141,7 +157,7 @@ async def get_next_day(token: Annotated[str, Query(description='Authentication t
     return list(query)
 
 @app.post('/retrieval', dependencies=[Depends(get_db)])
-async def retrieval(token: str, 
+async def retrieval(token: Annotated[str, Query(description='Authentication token obtained from /start_run')], 
                     topic: str, 
                     results: List[QuestionResults], 
                     metadata: dict | None = None):
@@ -172,7 +188,7 @@ async def retrieval(token: str,
     return {'status': 'success'}
 
 @app.get('/finalize_run', response_model=Run, dependencies=[Depends(get_db)])
-async def finalize_run(token: str):
+async def finalize_run(token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
     if not valid_token(token):
         raise HTTPException(status_code=401, detail='Invalid token')
     
