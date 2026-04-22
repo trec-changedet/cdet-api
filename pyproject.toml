@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cdet_api"
+version = "1.0.0"
+authors = [
+    {name = "Ian Soboroff", email = "ian.soboroff@nist.gov" }
+]
+description = "A REST-based toolkit for TREC Change Detection submissions"
+readme = "README.md"
+license = "MIT"
+keywords = ["trec"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+    "Framework :: Pydantic",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "fastapi[standard]>=0.135.2",
+    "tqdm>=4.67.3",
+    "peewee>=4.0.4",
+    "python-terrier>=1.0",
+    "uvicorn>=0.44.0"
+]
+requires_python = ">= 3.13"
+
+[project.scripts]
+build-doc-db = "cdet_api.scripts.build_doc_db"
+
+[project.urls]
+Homepage = "https://trec-changedet.github.io"
+Repository = "https://github.com/trec-changedet/cdet-api"
+Issues = "https://github.com/trec-changedet/cdet-api/issues"
+
+
