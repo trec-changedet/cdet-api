@@ -1,15 +1,17 @@
 import io
 import json
 import secrets
+import shutil
 import time
 
 from annotated_types import doc
 from certifi import where
-from fastapi import Body, FastAPI, Depends, HTTPException, Path, Query
-from fastapi.responses import StreamingResponse
+from fastapi import Body, FastAPI, Depends, HTTPException, Path, Query, Response
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, model_validator
-from typing import Dict, List, Annotated, Tuple
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, TypeAdapter, model_validator
+from typing import Dict, List, Annotated, Tuple, Union
+from collections.abc import AsyncIterable
 from types import SimpleNamespace
 import tomllib
 import pathlib
@@ -112,7 +114,9 @@ class RunMetadata(BaseModel):
         examples=[['gemini-3.1-pro-preview', 'meta/llama-4-maverick-17b-128e-instruct-maas', 'claude-sonnet-4-6']]
     )
 
-Run = RootModel[Tuple[RunMetadata, List[TopicResults]]]
+Run = list[Union[RunMetadata, TopicResults, dict[str,str]]]
+Run_adapter = TypeAdapter(Run)
+
 
 # Dependency to safely manage database connections per request
 def get_db():
@@ -190,24 +194,43 @@ async def retrieval(token: Annotated[str, Query(description='Authentication toke
     log(f'{token}.log', {'endpoint': '/retrieval', 'topic': topic, 'results': [ foo.model_dump() for foo in results.results ], 'retrieval_extra': results.extra})
     return {'status': 'success'}
 
-@app.get('/finalize_run', response_model=Run, dependencies=[Depends(get_db)])
-async def finalize_run(token: Annotated[str, Query(description='Authentication token obtained from /start_run', )]):
+class TextBufferResponse(Response):
+    media_type = 'text/plain'
+
+    def render(self, content: io.BytesIO) -> bytes:
+        return content.getbuffer()
+
+@app.get('/finalize_run', 
+         response_class=TextBufferResponse, 
+         dependencies=[Depends(get_db)],
+         responses={
+             200: {
+                 'content': { 'application/json': {}}
+             }
+         }
+        )
+async def finalize_run(
+    token: Annotated[str, Query(description='Authentication token obtained from /start_run', )],
+    send: Annotated[bool, Query(description='Should the API send a file. If not, save the file locally and return a status. If the server does not support local saves, this will return a fail status')]
+    ):
+
     if not valid_token(token):
         raise HTTPException(status_code=401, detail='Invalid token')
     
     results_per_topic = {}
-    metadata_block = None
+    runinfo = None
     errors = []
+    buffer = io.BytesIO()
+    writer = io.TextIOWrapper(buffer, encoding='utf-8', write_through=True)
+
     with open(pathlib.Path(settings.logdir) / f'{token}.log', 'r') as f:
         current_day = None
         for line in f:
             le = json.loads(line)
 
             if le['endpoint'] == '/start_run':
-                metadata_block = {
-                    'runtag': le.get('runtag', 'my_run'),
-                    **(le.get('metadata', None))
-                }
+                runinfo = RunMetadata(**(json.loads(le['metadata'])))
+                print(runinfo.model_dump_json(), file=writer)
 
             elif le['endpoint'] == '/next_day':
                 current_day = le['day']
@@ -222,17 +245,28 @@ async def finalize_run(token: Annotated[str, Query(description='Authentication t
                     }
                 results_per_topic[topic]['results'][current_day] = le['results']
 
-    output = [metadata_block]
     for topic in results_per_topic:
-        output.append(results_per_topic[topic])
+        print(json.dumps(results_per_topic[topic]), file=writer)
 
     if len(errors) > 0:
-        output.append({ 'errors': errors })
+        print(json.dumps({ 'errors': errors }), file=writer)
 
     log(f'{token}.log', {'endpoint': '/finalize_run'})
     update_run_state(token, state='finalized')
     RunState.delete().where(RunState.token == token).execute()
-    return output
+
+    buffer.flush()
+    buffer.seek(0)
+    print('send is', send)
+    if send:
+        return TextBufferResponse(buffer)
+    elif settings.save:
+        with open(pathlib.Path(settings.logdir) / f'{token}.runfile', 'w', encoding='utf-8') as fp:
+            shutil.copyfileobj(writer, fp)
+        return JSONResponse(status_code=200, content={ 'status': 'success' })
+    else:
+        raise HTTPException(status_code=405, detail='Server-side saving not supported')
+
 
 def use_route_names_as_operation_ids(app: FastAPI) -> None:
     """

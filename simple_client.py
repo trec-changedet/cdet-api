@@ -77,6 +77,6 @@ if __name__ == '__main__':
             print("all done!")
 
     shutil.rmtree('foo.index', ignore_errors=True)
-    runfile = api_instance.finalize_run(token)
-    with open(f"{run_def['runtag']}.json", 'r') as fp:
-        fp.write(runfile)
+    runfile = api_instance.finalize_run(token, send=False)
+    with open(f"{run_def.runtag}.json", 'w') as fp:
+        print(runfile, file=fp)
