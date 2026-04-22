@@ -52,11 +52,15 @@ More on deploying FastAPI apps can be found at https://fastapi.xiniushu.com/sv/d
 
 Once the server is running, you can play with the API and see documentation at https://127.0.0.1:8000/docs. At that endpoint, you can access all the API endpoints through a generated web form. Be sure to use one of the API keys you defined in the server or the placeholder 'abc123' key.
 
+### Using the included Python client API
+
+There is an API for building your TREC run client in `cdet_api.client.CDetClient`.  An example client `example_client.py` is included that reads the topics, runs over the collection, generates results, and outputs a well-formed TREC run. It uses PyTerrier to generate a BM25 ranking of each day's document set using the topic questions as queries and shows how to execute the task, if poorly. Feel free to use it as a starting point.
+
 ### Generating a client library
 
-You can automatically create an API library from the running server using any OpenAPI client generator library, see https://fastapi.xiniushu.com/sv/advanced/generate-clients/ and https://www.openapis.org/.
+You can automatically create an API library for whatever language you want from the running server using any OpenAPI client generator library, see https://fastapi.xiniushu.com/sv/advanced/generate-clients/ and https://www.openapis.org/.
 
-First, you need the API specification, which you can get from the running server:
+Most generators can take the API specification from the server. If you need the API specification as a file, you can get it from the running server:
 ```bash
 curl -O http://127.0.0.1:8000/openapi.json
 ```
@@ -65,13 +69,13 @@ Here is an example of generating a Python library using `openapi-generator` (htt
 ```bash
 openapi-generator generate -i http://127.0.0.1:8000/openapi.json -g python -o sdks/python -c config.json
 ```
-That generated API is in this repository in `sdks/python`, and there is a basic baseline TREC system in this repository, `simple_client.py`, that uses it:
+That generated API is in this repository in `sdks/python`, and there is a port of `example_client.py` to it called `openapi_client.py`, that uses it:
 ```bash
 # make sure the environment is active!
 cd sdks/python
 pip install .
 cd ../..
 fastapi dev cdet_api/server.py &
-python simple_client.py test-topics.jsonl
+python openapi_client.py test-topics.jsonl
 ```
-That client will read the topics, run over the collection, generate results, and output a well-formed TREC run. `simple_client.py` uses PyTerrier to generate a BM25 ranking of each day's document set using the topic questions as queries.
+
