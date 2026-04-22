@@ -1,6 +1,6 @@
 # CDET-API - A REST server for TREC Change Detection
 
-This is a jig designed to make it easier to participate in and submit well-formed submissions to the TREC Change Detection track ([trec.nist.gov](trec.nist.gov), [trec-changedet.github.io](trec-changedet.github.io)). It is a simple REST server written using FastAPI. It includes a Python client API, or you can automatically generate a client library for whatever implementation language you have. Then you can run this server locally, run your client against it, and submit the output to TREC.
+This is a jig designed to make it easier to participate in and submit well-formed submissions to the TREC Change Detection track ([trec.nist.gov](http://trec.nist.gov), [trec-changedet.github.io](http://trec-changedet.github.io)). It is a simple REST server written using FastAPI. It includes a Python client API, or you can automatically generate a client library for whatever implementation language you have. Then you can run this server locally, run your client against it, and submit the output to TREC.
 
 ### Installation
 
