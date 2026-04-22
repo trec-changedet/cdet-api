@@ -4,19 +4,21 @@ This is a jig designed to make it easier to participate in and submit well-forme
 
 ### Installation
 
-This is a fairly standard Python project. To set it up, create a virtual environment and install the packages in the `requirements.txt` file:
+To install the package with pip:
 ```bash
 python3 -m venv .venv               # create the virtual environment
 . .venv/bin/activate                # activate the environment
 pip install -U pip                  # update pip, the Python package manager
-pip install -r requirements.txt     # and install the dependencies
+pip install git+https://github.com/trec-changedet/cdet-api
 ```
+
+If you clone the repository, you can install with `pip install .`.
 
 You need the English subset of the RAGTIME1 collection, available via HuggingFace at https://huggingface.co/datasets/trec-ragtime/ragtime1/blob/main/eng-docs.jsonl.
 
 Next, compile the local SQLite database that is used to rapidly serve the documents for each day of the collection and maintain state for the server:
 ```bash
-python build_doc_db /path/to/eng-docs.jsonl
+build-doc-db /path/to/eng-docs.jsonl
 ```
 This will create a database `docs.db` in the current directory.
 
@@ -45,9 +47,8 @@ fastapi dev src/cdet_api/server.py
 ```
 or using uvicorn:
 ```bash
-uvicorn --app-dir src cdet_api.server:app --host 0.0.0.0 --port 8000
+uvicorn cdet_api.server:app --host 0.0.0.0 --port 8000
 ```
-(The `--app-dir` argument is needed if you're running from this repository. If you install with pip you don't need it.)
 
 More on deploying FastAPI apps can be found at https://fastapi.xiniushu.com/sv/deployment/manually/
 
@@ -55,7 +56,11 @@ Once the server is running, you can play with the API and see documentation at h
 
 ### Using the included Python client API
 
-There is an API for building your TREC run client in `cdet_api.client.CDetClient`.  An example client `example_client.py` is included that reads the topics, runs over the collection, generates results, and outputs a well-formed TREC run. It uses PyTerrier to generate a BM25 ranking of each day's document set using the topic questions as queries and shows how to execute the task, if poorly. Feel free to use it as a starting point.
+There is an API for building your TREC run client in `cdet_api.client.CDetClient`.  An example client `example_client.py` is included that reads the topics, runs over the collection, generates results, and outputs a well-formed TREC run. It uses PyTerrier to generate a BM25 ranking of each day's document set using the topic questions as queries and shows how to execute the task, if poorly. To run it, 
+```bash
+python -m cdet_api.examples.example_client --help
+```
+Feel free to use it as a starting point.
 
 ### Generating a client library
 
