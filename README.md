@@ -41,12 +41,13 @@ Type "help", "copyright", "credits" or "license" for more information.
 
 You can then start the API server, either in development mode:
 ```bash
-fastapi dev cdet_api/server.py
+fastapi dev src/cdet_api/server.py
 ```
 or using uvicorn:
 ```bash
-uvicorn cdet_api.server:app --host 0.0.0.0 --port 8000
+uvicorn --app-dir src cdet_api.server:app --host 0.0.0.0 --port 8000
 ```
+(The `--app-dir` argument is needed if you're running from this repository. If you install with pip you don't need it.)
 
 More on deploying FastAPI apps can be found at https://fastapi.xiniushu.com/sv/deployment/manually/
 
