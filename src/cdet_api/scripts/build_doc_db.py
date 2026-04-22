@@ -65,9 +65,12 @@ def load_jsonl_to_sqlite(file_path: str):
 
     db.close()
 
-if __name__ == '__main__':
+def main():
     if len(sys.argv) < 2:
         print("Usage: python loader.py <path_to_jsonl_file.jsonl>")
         sys.exit(1)
     
     load_jsonl_to_sqlite(sys.argv[1])
+
+if __name__ == '__main__':
+    main()
