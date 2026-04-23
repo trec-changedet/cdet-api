@@ -53,6 +53,12 @@ class RunMetadata(BaseModel):
         description='Give names or URLs of LLMs used in this run. The names should be enough to allow others to reproduce your run.',
         examples=[['gemini-3.1-pro-preview', 'meta/llama-4-maverick-17b-128e-instruct-maas', 'claude-sonnet-4-6']]
     )
+    extra: dict[str,str] | None = Field(
+        title="Extra",
+        default=None,
+        description="You can add any private metadata about your run here.",
+        examples=[{ 'affiliation': 'Miskatonic University', 'special_thanks_to': 'the grad students' }]
+    )
 
 Run = list[Union[RunMetadata, TopicResults, dict[str,str]]]
 Run_adapter = TypeAdapter(Run)
