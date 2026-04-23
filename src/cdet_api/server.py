@@ -198,6 +198,7 @@ async def finalize_run(
     update_run_state(token, state='finalized')
     RunState.delete().where(RunState.token == token).execute()
 
+    del writer
     buffer.flush()
     buffer.seek(0)
     print('send is', send)
