@@ -26,7 +26,7 @@ def convert_results(df):
     for qid, group in grouped:
         query = group['query'].iloc[0]
         doc_ranking = list(zip(group['docno'], group['score']))
-        doc_ranking = [ Hit(doc_id=hit[0], score=hit[1]) for hit in doc_ranking[:5] ]
+        doc_ranking = [ Hit(doc_id=hit[0], score=hit[1]) for hit in doc_ranking[:20] ]
         result.append(QuestionResults(qid=qid, question_text=query, question_rank=1, doc_ranking=doc_ranking))
     return result
 
@@ -55,8 +55,6 @@ if __name__ == '__main__':
     client = CDetClient(base_url=args.base_url)
 
     token = client.start_run(api_key='abc123', metadata=run_def)
-    print('token is', token)
-    test_docs = client.next_day(token)
     shutil.rmtree('foo.index', ignore_errors=True)
 
     try:
