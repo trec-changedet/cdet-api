@@ -50,11 +50,16 @@ class RunMetadata(BaseModel):
     )
     models: list[str] = Field(
         title='Models',
-        description='Give names or URLs of LLMs used in this run. The names should be enough to allow others to reproduce your run.',
+        description='Give names or URLs of LLMs used in this run. The names should be descriptive enough to allow others to reproduce your run.',
         examples=[['gemini-3.1-pro-preview', 'meta/llama-4-maverick-17b-128e-instruct-maas', 'claude-sonnet-4-6']]
     )
+    extern: str = Field(
+        title='External information',
+        description='Provide a description of any data used outside the topics and the RAGTIME1 English dataset. For example, if you used another dataset to establish corpus statistics, note that here.',
+        examples=['Provide a description of any data used outside the topics and the RAGTIME1 English dataset. For example, if you used another dataset to establish corpus statistics, note that here.'],
+    )
     extra: dict[str,str] | None = Field(
-        title="Extra",
+        title='Extra',
         default=None,
         description="You can add any private metadata about your run here.",
         examples=[{ 'affiliation': 'Miskatonic University', 'special_thanks_to': 'the grad students' }]
