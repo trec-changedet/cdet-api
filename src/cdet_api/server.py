@@ -1,17 +1,14 @@
-import io
 import json
 import secrets
 import shutil
 import time
+import tempfile
+import os
 
-from annotated_types import doc
-from certifi import where
-from fastapi import Body, FastAPI, Depends, HTTPException, Path, Query, Response
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, TypeAdapter, model_validator
-from typing import Dict, List, Annotated, Tuple, Union
-from collections.abc import AsyncIterable
+from typing import List, Annotated
 from types import SimpleNamespace
 import tomllib
 import pathlib
@@ -132,19 +129,17 @@ async def retrieval(token: Annotated[str, Query(description='Authentication toke
                 .where(DocDay.docid.in_([hit.doc_id for hit in qr.doc_ranking]) & (DocDay.day != today))
                 .exists())
         if docs:
-            raise HTTPException(status_code=400, detail=f"Document {doc.docid} is from day {doc.day}, but the last accessed day for this run is {today}. Please ensure retrieval results are reported for the correct day.")
+            raise HTTPException(status_code=400, detail=f"Documents (including {docs[0].docid}) are from day {docs[0].day}, but the last accessed day for this run is {today}. Please ensure retrieval results are reported for the correct day.")
 
     log(f'{token}.log', {'endpoint': '/retrieval', 'topic': topic, 'results': [ foo.model_dump() for foo in results.results ], 'retrieval_extra': results.extra})
     return {'status': 'success'}
 
-class TextBufferResponse(Response):
-    media_type = 'text/plain'
-
-    def render(self, content: io.BytesIO) -> bytes:
-        return content.getbuffer()
+def remove_file(path: str):
+    if os.path.exists(path):
+        os.remove(path)
 
 @app.get('/finalize_run', 
-         response_class=TextBufferResponse, 
+         response_class=FileResponse, 
          dependencies=[Depends(get_db)],
          responses={
              200: {
@@ -154,7 +149,8 @@ class TextBufferResponse(Response):
         )
 async def finalize_run(
     token: Annotated[str, Query(description='Authentication token obtained from /start_run', )],
-    send: Annotated[bool, Query(description='Should the API send a file. If not, save the file locally and return a status. If the server does not support local saves, this will return a fail status')]
+    send: Annotated[bool, Query(description='Should the API send a file. If not, save the file locally and return a status. If the server does not support local saves, this will return a fail status')],
+    background_tasks: BackgroundTasks
     ):
 
     if not valid_token(token):
@@ -163,8 +159,7 @@ async def finalize_run(
     results_per_topic = {}
     runinfo = None
     errors = []
-    buffer = io.BytesIO()
-    writer = io.TextIOWrapper(buffer, encoding='utf-8', write_through=True)
+    writer = tempfile.NamedTemporaryFile(encoding='utf-8', mode='wt', suffix='.jsonl', delete=False, errors='replace')
 
     with open(pathlib.Path(settings.logdir) / f'{token}.log', 'r') as f:
         current_day = None
@@ -188,6 +183,9 @@ async def finalize_run(
                     }
                 results_per_topic[topic]['results'][current_day] = le['results']
 
+    if not runinfo:
+        raise HTTPException(status_code=503, detail='Run metadata missing from log file.')
+
     for topic in results_per_topic:
         print(json.dumps(results_per_topic[topic]), file=writer)
 
@@ -198,15 +196,16 @@ async def finalize_run(
     update_run_state(token, state='finalized')
     RunState.delete().where(RunState.token == token).execute()
 
-    del writer
-    buffer.flush()
-    buffer.seek(0)
+    writer.close()
     print('send is', send)
+    response_filename = f'{runinfo.runtag}.jsonl'
     if send:
-        return TextBufferResponse(buffer)
+        background_tasks.add_task(remove_file, writer.name)
+        return FileResponse(path=writer.name, filename=response_filename, media_type='text/plain')
     elif settings.save:
-        with open(pathlib.Path(settings.logdir) / f'{token}.runfile', 'w', encoding='utf-8') as fp:
-            shutil.copyfileobj(writer, fp)
+        with open(writer.name, mode='rt') as reader:
+            with open(pathlib.Path(settings.logdir) / response_filename, 'wb', encoding='utf-8') as fp:
+                shutil.copyfileobj(reader, fp)
         return JSONResponse(status_code=200, content={ 'status': 'success' })
     else:
         raise HTTPException(status_code=405, detail='Server-side saving not supported')
