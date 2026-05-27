@@ -203,9 +203,7 @@ async def finalize_run(
         background_tasks.add_task(remove_file, writer.name)
         return FileResponse(path=writer.name, filename=response_filename, media_type='text/plain')
     elif settings.save:
-        with open(writer.name, mode='rt') as reader:
-            with open(pathlib.Path(settings.logdir) / response_filename, 'wb', encoding='utf-8') as fp:
-                shutil.copyfileobj(reader, fp)
+        os.replace(writer.name, pathlib.Path(settings.logdir) / response_filename)
         return JSONResponse(status_code=200, content={ 'status': 'success' })
     else:
         raise HTTPException(status_code=405, detail='Server-side saving not supported')
