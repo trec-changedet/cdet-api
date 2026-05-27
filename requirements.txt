@@ -1,4 +1,5 @@
-fastapi[standard]==0.135.2
+fastapi[standard]
+starlette>=1.0.1
 tqdm==4.67.3
 peewee==4.0.4
 python-terrier==1.0
