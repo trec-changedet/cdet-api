@@ -62,6 +62,12 @@ python -m cdet_api.examples.example_client --help
 ```
 Feel free to use it as a starting point.
 
+In the `data/` directory are two example topic files. The first, `dev-topics.jsonl`, includes two documents per topic question and mimics the setup in the TREC track. The second, `dev-topics-all-docs.jsonl` includes more documents that were uncovered during topic development. There is no way to get an arbitrary document from the API; you can look for these documents in the daily dump, and when they appear you can know that they are relevant to that question. To run the example client with the development topics, do
+```bash
+python -m cdet_api.examples.example_client data/dev-topics.jsonl
+```
+After running over the full collection, you will see a `my-run.json`, a well-formed run file, in the current directory.
+
 ### Generating a client library
 
 You can automatically create an API library for whatever language you want from the running server using any OpenAPI client generator library, see https://fastapi.xiniushu.com/sv/advanced/generate-clients/ and https://www.openapis.org/.
