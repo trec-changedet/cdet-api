@@ -19,9 +19,9 @@ def build_index(docs):
     indexer.index(docs)
     return index
 
-def convert_results(df):
+def convert_results(df) -> List[QuestionResults]:
     if df.empty:
-        return {}
+        return []
     grouped = df.groupby('qid')
     result = []
     for qid, group in grouped:
@@ -31,7 +31,7 @@ def convert_results(df):
         result.append(QuestionResults(qid=qid, question_text=query, question_rank=1, doc_ranking=doc_ranking))
     return result
 
-def search(index, topic):
+def search(index, topic) -> List[QuestionResults]:
     retriever = index.bm25() % 20 # this doesn't seem to be working to limit the results list
     df = pd.DataFrame([[q['qid'], q['question']] for q in topic['questions']], columns=['qid', 'query'])
     results = retriever(df)
