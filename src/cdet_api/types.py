@@ -1,4 +1,4 @@
-from typing import Annotated, List, Union
+from typing import Annotated, List, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
 
 type DayString = Annotated[str, StringConstraints(pattern=r'^\d{4}-\d{2}-\d{2}$', min_length=10, max_length=10)]
@@ -47,6 +47,11 @@ class RunMetadata(BaseModel):
         title='Description',
         description='Provide a description of your run that briefly explains your approach to the task.',
         examples=['Provide a description of your run that briefly explains your approach to the task.']
+    )
+    run_type: Literal['manual', 'automatic'] = Field(
+        title='Run type',
+        description='Is this run manual or automatic? An automatic run is one with no human intervention: essentially a program that takes the test topics as input and produces a run file as output. A manual run is one that has any level of manual intervention, from reviewing the test topic file on up to doing the task completely by hand.',
+        examples=['manual', 'automatic']
     )
     models: list[str] = Field(
         title='Models',

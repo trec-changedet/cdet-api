@@ -10,6 +10,7 @@ import pandas as pd
 run_def = RunMetadata(
     runtag='my-run', 
     description='Uses PyTerrier to index the documents on each day, search the docs using a BM25 search with the question, return the top 20 docs.',
+    run_type='automatic',
     extern='No external data used.',
     models=[])
 
