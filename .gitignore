@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.db
+settings.toml
 logs/
 sdks/
 topics.two-keepers
