@@ -16,6 +16,10 @@ If you clone the repository, you can install with `pip install .`.
 
 You need the English subset of the RAGTIME1 collection, available via HuggingFace at https://huggingface.co/datasets/trec-ragtime/ragtime1/blob/main/eng-docs.jsonl.
 
+```
+curl -OL https://huggingface.co/datasets/trec-ragtime/ragtime1/resolve/main/eng-docs.jsonl
+```
+
 Next, compile the local SQLite database that is used to rapidly serve the documents for each day of the collection and maintain state for the server:
 ```bash
 python -m cdet_api.scripts.build-doc-db /path/to/eng-docs.jsonl
