@@ -18,7 +18,7 @@ You need the English subset of the RAGTIME1 collection, available via HuggingFac
 
 Next, compile the local SQLite database that is used to rapidly serve the documents for each day of the collection and maintain state for the server:
 ```bash
-build-doc-db /path/to/eng-docs.jsonl
+python -m cdet_api.scripts.build-doc-db /path/to/eng-docs.jsonl
 ```
 This will create a database `docs.db` in the current directory.
 
