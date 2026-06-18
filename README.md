@@ -45,6 +45,13 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>> 
 ```
 
+The server requires a file with settings called `settings.toml`. The repo includes a sample one. It specifies where to store its logs and whether to save out runs into the filesystem by default.
+
+```bash
+cp settigs.toml.default settings.toml
+mkdir logs
+```
+
 You can then start the API server, either in development mode:
 ```bash
 fastapi dev src/cdet_api/server.py
