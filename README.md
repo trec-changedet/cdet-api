@@ -22,7 +22,7 @@ curl -OL https://huggingface.co/datasets/trec-ragtime/ragtime1/resolve/main/eng-
 
 Next, compile the local SQLite database that is used to rapidly serve the documents for each day of the collection and maintain state for the server:
 ```bash
-python -m cdet_api.scripts.build-doc-db /path/to/eng-docs.jsonl
+python -m cdet_api.scripts.build_doc_db /path/to/eng-docs.jsonl
 ```
 This will create a database `docs.db` in the current directory.
 
