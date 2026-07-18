@@ -63,7 +63,7 @@ uvicorn cdet_api.server:app --host 0.0.0.0 --port 8000
 
 More on deploying FastAPI apps can be found at https://fastapi.xiniushu.com/sv/deployment/manually/
 
-Once the server is running, you can play with the API and see documentation at https://127.0.0.1:8000/docs. At that endpoint, you can access all the API endpoints through a generated web form. Be sure to use one of the API keys you defined in the server or the placeholder 'abc123' key.
+Once the server is running, you can play with the API and see documentation at http://127.0.0.1:8000/docs. At that endpoint, you can access all the API endpoints through a generated web form. Be sure to use one of the API keys you defined in the server or the placeholder 'abc123' key.
 
 ### Using the included Python client API
 
