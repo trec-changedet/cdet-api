@@ -2,6 +2,10 @@ import argparse
 import json
 import shutil
 from pprint import pprint
+from contextlib import contextmanager
+import tempfile
+import os.path
+
 from cdet_api.client import CDetClient, NoMoreDaysException
 from cdet_api.types import *
 import pyterrier as pt
@@ -14,11 +18,32 @@ run_def = RunMetadata(
     extern='No external data used.',
     models=[])
 
-def build_index(docs):
-    index = pt.terrier.TerrierIndex('foo.index', memory=True)
-    indexer = index.indexer(meta={'docno': 50}, text_attrs=['text'])
-    indexer.index(docs)
-    return index
+def build_index(docs, index_path):
+    indexer = pt.IterDictIndexer(index_path, meta={'docno': 50}, text_attrs=['text'], overwrite=True)
+    indexref = indexer.index(docs)
+    return pt.IndexFactory.of(indexref)
+
+@contextmanager
+def self_cleaning_index(docs):
+    # Use tempfile to guarantee a unique path for every loop iteration
+    # This prevents Terrier's internal cache from confusing new indices with old ones
+    tmp_dir = tempfile.mkdtemp()
+    index = None
+
+    try:
+        index = build_index(docs, tmp_dir)
+        yield index
+    finally:
+        # 1. Close the actual Java object holding the file descriptors
+        if index is not None:
+            try:
+                index.close()
+            except Exception as e:
+                print(f"Error closing index: {e}")
+
+        # 2. Safely delete the physical files from disk
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
 
 def convert_results(df) -> List[QuestionResults]:
     if df.empty:
@@ -33,7 +58,7 @@ def convert_results(df) -> List[QuestionResults]:
     return result
 
 def search(index, topic) -> List[QuestionResults]:
-    retriever = index.bm25() % 20 # this doesn't seem to be working to limit the results list
+    retriever = pt.terrier.Retriever(index)
     df = pd.DataFrame([[q['qid'], q['question']] for q in topic['questions']], columns=['qid', 'query'])
     results = retriever(df)
     converted = convert_results(results)
@@ -57,7 +82,6 @@ if __name__ == '__main__':
     client = CDetClient(base_url=args.base_url)
 
     token = client.start_run(api_key='abc123', metadata=run_def)
-    shutil.rmtree('foo.index', ignore_errors=True)
 
     try:
         days = 0
@@ -66,14 +90,12 @@ if __name__ == '__main__':
             if args.stop_after_n_days and days > args.stop_after_n_days:
                 break
             day_docs = [ { 'docno': doc.id, 'text': doc.text } for doc in client.next_day(token) ]
-            index = build_index(day_docs)
-            for topic in topics:
-                results = search(index, topic)
-                result = client.retrieval(token=token, topic=topic['tid'], retrieval_results=DayResults(results=results))
-            shutil.rmtree('foo.index')
+            with self_cleaning_index(day_docs) as index:
+                for topic in topics:
+                    results = search(index, topic)
+                    result = client.retrieval(token=token, topic=topic['tid'], retrieval_results=DayResults(results=results))
 
     except NoMoreDaysException:
         print("all done!")
 
-    shutil.rmtree('foo.index', ignore_errors=True)
     runfile = client.finalize_run(token, output_filename=f'{run_def.runtag}.json')
