@@ -1,10 +1,10 @@
 import argparse
 import json
+import os
 import shutil
-from pprint import pprint
 from contextlib import contextmanager
 import tempfile
-import os.path
+from pprint import pprint
 
 from cdet_api.client import CDetClient, NoMoreDaysException
 from cdet_api.types import *
@@ -53,12 +53,13 @@ def convert_results(df) -> List[QuestionResults]:
     for qid, group in grouped:
         query = group['query'].iloc[0]
         doc_ranking = list(zip(group['docno'], group['score']))
-        doc_ranking = [ Hit(doc_id=hit[0], score=hit[1]) for hit in doc_ranking[:20] ]
-        result.append(QuestionResults(qid=qid, question_text=query, question_rank=1, doc_ranking=doc_ranking))
+        doc_ranking = [ Hit(doc_id=hit[0], score=hit[1]) for hit in doc_ranking[:20] if hit[1] > 5 ]
+        if len(doc_ranking) > 0:
+            result.append(QuestionResults(qid=qid, question_text=query, question_rank=1, doc_ranking=doc_ranking))
     return result
 
 def search(index, topic) -> List[QuestionResults]:
-    retriever = pt.terrier.Retriever(index)
+    retriever = pt.terrier.Retriever(index, wmodel='BM25', num_results=20)
     df = pd.DataFrame([[q['qid'], q['question']] for q in topic['questions']], columns=['qid', 'query'])
     results = retriever(df)
     converted = convert_results(results)
