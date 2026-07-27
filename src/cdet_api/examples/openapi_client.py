@@ -1,12 +1,18 @@
 import argparse
 import json
 import shutil
+from contextlib import contextmanager
+import tempfile
+import os
+
 import changedet_api
 from changedet_api.api_client import ApiException
 from changedet_api.models import RunMetadata, Hit, QuestionResults, DayResults
 from pprint import pprint
 import pyterrier as pt
 import pandas as pd
+
+from cdet_api import client
 
 config = changedet_api.Configuration(
     host='http://127.0.0.1:8000'
@@ -19,11 +25,27 @@ run_def = RunMetadata(
     extern='No external data used.',
     models=[])
 
-def build_index(docs):
-    index = pt.terrier.TerrierIndex('foo.index', memory=True)
-    indexer = index.indexer(meta={'docno': 50}, text_attrs=['text'])
-    indexer.index(docs)
-    return index
+def build_index(docs, tmp_path):
+    indexer = pt.IterDictIndexer(tmp_path, meta={'docno': 50}, text_attrs=['text'], overwrite=True)
+    indexref = indexer.index(docs)
+    return pt.IndexFactory.of(indexref)
+
+@contextmanager
+def self_cleaning_index(docs):
+    tmp_dir = tempfile.mkdtemp()
+    index = None
+
+    try:
+        index = build_index(docs, tmp_dir)
+        yield index
+    finally:
+        if index is not None:
+            try:
+                index.close()
+            except Exception as e:
+                print(f"Error closing index: {e}")
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
 
 def convert_results(df):
     if df.empty:
@@ -33,12 +55,13 @@ def convert_results(df):
     for qid, group in grouped:
         query = group['query'].iloc[0]
         doc_ranking = list(zip(group['docno'], group['score']))
-        doc_ranking = [ Hit(doc_id=hit[0], score=hit[1]) for hit in doc_ranking[:5] ]
-        result.append(QuestionResults(qid=qid, question_text=query, question_rank=1, doc_ranking=doc_ranking))
+        doc_ranking = [ Hit(doc_id=hit[0], score=hit[1]) for hit in doc_ranking[:20] if hit[1] > 5 ]
+        if len(doc_ranking) > 0:
+            result.append(QuestionResults(qid=qid, question_text=query, question_rank=1, doc_ranking=doc_ranking))
     return result
 
 def search(index, topic):
-    retriever = index.bm25() % 20 # this doesn't seem to be working to limit the results list
+    retriever = pt.terrier.Retriever(index, wmodel='BM25', num_results=20)
     df = pd.DataFrame([[q['qid'], q['question']] for q in topic['questions']], columns=['qid', 'query'])
     results = retriever(df)
     converted = convert_results(results)
@@ -69,11 +92,10 @@ if __name__ == '__main__':
                 if args.stop_after_n_days and days > args.stop_after_n_days:
                     break
                 day_docs = [ { 'docno': doc.id, 'text': doc.text } for doc in api_instance.get_next_day(token) ]
-                index = build_index(day_docs)
-                for topic in topics:
-                    results = search(index, topic)
-                    result = api_instance.retrieval(token=token, topic=topic['tid'], day_results=DayResults(results=results))
-                shutil.rmtree('foo.index')
+                with self_cleaning_index(day_docs) as index:
+                    for topic in topics:
+                        results = search(index, topic)
+                        result = client.retrieval(token=token, topic=topic['tid'], retrieval_results=DayResults(results=results))
 
         except ApiException:
             print("all done!")
