@@ -34,6 +34,19 @@ class TopicResults(BaseModel):
     results: dict[DayString, DayResults]
     extra: dict | None = None
 
+# There is a bug in the finalize endpoint, where the results that are printed are not 
+# DayResults objects, but just a list of QuestionResults. That is correct according to the 
+# guidelines, but means that we can't use the DayResults model to validate the results. So we 
+# will just use a list of QuestionResults for now.
+
+class SubmittedTopicResults(BaseModel):
+    topic: str
+    results: dict[DayString, list[QuestionResults]]
+    extra: dict | None = None
+
+type SubmittedRun = list[Union[RunMetadata, TopicResults, dict[str,str]]]
+
+
 class RunMetadata(BaseModel):
     runtag: str = Field(
         title='Runtag',
