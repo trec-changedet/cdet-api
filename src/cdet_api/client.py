@@ -43,7 +43,7 @@ class CDetClient:
         except ValidationError as ve:
             print(f'/next_day Validation error: {ve}')
         except requests.RequestException as e:
-            if response.status_code == 404:
+            if getattr(e, 'response', None) is not None and e.response.status_code == 404:
                 raise NoMoreDaysException()
             print(f'/next_day Request error: {e}')
 
